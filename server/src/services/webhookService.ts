@@ -145,30 +145,44 @@ async function finalizePayment(paymentId: string, stripePaymentIntentId?: string
   const invoice = payment ? await Invoice.findById(payment.invoiceId) : null;
   const client = invoice ? await Client.findById(invoice.clientId) : null;
 
-  if (payment && invoice && client) {
-    await recordAudit({
-      actor: null,
-      action: 'PAYMENT_STATUS_CHANGED',
-      resource: 'Payment',
-      resourceId: payment._id.toString(),
-      metadata: { newStatus: 'SUCCEEDED', invoiceId: invoice._id.toString() },
-    });
-    await recordAudit({
-      actor: null,
-      action: 'INVOICE_MARKED_PAID',
-      resource: 'Invoice',
-      resourceId: invoice._id.toString(),
-      metadata: { paymentId: payment._id.toString() },
-    });
+  if (!payment || !invoice || !client) return;
 
-    try {
-      await sendPaymentConfirmationEmail(client, invoice, payment);
-      await generateAndDeliverReceipt(invoice, payment, client);
-    } catch (err) {
-      logger.error('Post-payment fulfillment step failed (receipt/email)', {
-        paymentId: payment._id.toString(),
-        error: err instanceof Error ? err.message : 'unknown',
-      });
-    }
+  await recordAudit({
+    actor: null,
+    action: 'PAYMENT_STATUS_CHANGED',
+    resource: 'Payment',
+    resourceId: payment._id.toString(),
+    metadata: { newStatus: 'SUCCEEDED', invoiceId: invoice._id.toString() },
+  });
+  await recordAudit({
+    actor: null,
+    action: 'INVOICE_MARKED_PAID',
+    resource: 'Invoice',
+    resourceId: invoice._id.toString(),
+    metadata: { paymentId: payment._id.toString() },
+  });
+
+  // Each fulfillment step is independent: an email provider outage must
+  // never prevent the receipt (the thing the client actually needs) from
+  // being generated, and vice versa. These used to share one try/catch,
+  // which meant a failed confirmation email silently skipped receipt
+  // generation entirely — the invoice showed PAID but no receipt ever
+  // existed to download.
+  try {
+    await sendPaymentConfirmationEmail(client, invoice, payment);
+  } catch (err) {
+    logger.error('Payment confirmation email failed', {
+      paymentId: payment._id.toString(),
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+  }
+
+  try {
+    await generateAndDeliverReceipt(invoice, payment, client);
+  } catch (err) {
+    logger.error('Receipt generation/delivery failed', {
+      paymentId: payment._id.toString(),
+      error: err instanceof Error ? err.message : 'unknown',
+    });
   }
 }
