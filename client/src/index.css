@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  h1, h2, h3, h4 {
+    font-family: theme('fontFamily.display');
+  }
+  :focus-visible {
+    outline: 2px solid #2E6F5E;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-line rounded-card shadow-panel;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-vault-teal text-white text-sm font-medium px-4 py-2.5 rounded-md hover:bg-vault-tealDark transition-colors disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 bg-white border border-line text-ink text-sm font-medium px-4 py-2.5 rounded-md hover:bg-paper-muted transition-colors disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .input {
+    @apply w-full bg-white border border-line rounded-md px-3 py-2.5 text-sm text-ink placeholder:text-ink-700/40 focus:border-vault-teal outline-none transition-colors;
+  }
+  .label {
+    @apply block text-xs font-medium text-ink-700/70 mb-1.5;
+  }
+}
