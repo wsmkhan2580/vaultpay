@@ -96,3 +96,45 @@ export async function renderReceiptPdf(receipt: {
   if (!invoice || !payment || !client) throw ApiError.notFound('Receipt data not found');
   return generateReceiptPdf({ invoice, payment, client, receiptNumber: receipt.receiptNumber });
 }
+
+/** Admin view: all receipts for an invoice, no client ownership check. */
+export async function listReceiptsForInvoiceAdmin(invoiceId: string) {
+  const invoice = await Invoice.findById(invoiceId);
+  if (!invoice) throw ApiError.notFound('Invoice not found');
+  return Receipt.find({ invoiceId });
+}
+
+/**
+ * Manually (re)generates a receipt for a PAID invoice. Used by the admin UI
+ * when the automatic webhook-driven generation didn't happen (e.g. an
+ * earlier deploy, a transient PDF/storage error). Idempotent — if a receipt
+ * already exists for the invoice's successful payment, returns it as-is
+ * instead of creating a duplicate. Unlike the webhook path, this does NOT
+ * swallow errors into a log line — it lets the real error (bad SMTP config,
+ * PDF generation failure, etc.) propagate back to the admin so it's visible
+ * in the UI instead of buried in server logs.
+ */
+export async function generateReceiptForInvoiceAdmin(invoiceId: string) {
+  const invoice = await Invoice.findById(invoiceId);
+  if (!invoice) throw ApiError.notFound('Invoice not found');
+  if (invoice.status !== 'PAID') {
+    throw ApiError.badRequest('Invoice is not paid yet — a receipt can only be generated for a paid invoice.');
+  }
+
+  const payment = await Payment.findOne({ invoiceId: invoice._id, status: 'SUCCEEDED' }).sort({ paidAt: -1 });
+  if (!payment) {
+    throw ApiError.badRequest('No successful payment record found for this invoice.');
+  }
+
+  const existing = await Receipt.findOne({ paymentId: payment._id });
+  if (existing) return existing;
+
+  const client = await Client.findById(invoice.clientId);
+  if (!client) throw ApiError.notFound('Client for this invoice not found');
+
+  await generateAndDeliverReceipt(invoice, payment, client);
+
+  const created = await Receipt.findOne({ paymentId: payment._id });
+  if (!created) throw ApiError.internal('Receipt generation did not produce a record — check server logs.');
+  return created;
+}
