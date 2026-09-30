@@ -51,6 +51,11 @@ export const receiptApi = {
   getMyDownloadUrl: (id: string) => api.get<{ data: { url: string } }>(`/receipts/me/${id}/download-url`),
   // Authenticated on-demand PDF download (returned as a binary blob).
   downloadMine: (id: string) => api.get<Blob>(`/receipts/me/${id}/download`, { responseType: 'blob' }),
+  // Admin: view/generate/download receipts for any invoice.
+  listForInvoiceAdmin: (invoiceId: string) => api.get<{ data: Receipt[] }>(`/receipts/admin/invoice/${invoiceId}`),
+  generateForInvoiceAdmin: (invoiceId: string) =>
+    api.post<{ data: Receipt }>(`/receipts/admin/invoice/${invoiceId}/generate`),
+  downloadAdmin: (id: string) => api.get<Blob>(`/receipts/${id}/download`, { responseType: 'blob' }),
 };
 
 // --- Clients ---
