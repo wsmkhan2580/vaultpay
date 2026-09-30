@@ -34,6 +34,30 @@ export const getReceiptDownloadUrlAdmin = asyncHandler(async (req: Request, res:
   sendSuccess(res, 200, 'Signed download URL generated', { url, expiresInSeconds: 300 });
 });
 
+export const listReceiptsForInvoiceAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const receipts = await receiptService.listReceiptsForInvoiceAdmin(req.params.invoiceId);
+  sendSuccess(res, 200, 'Receipts retrieved', receipts);
+});
+
+/**
+ * Manual "generate receipt" action for the admin UI. Lets an admin recover
+ * a paid invoice whose receipt didn't get created automatically, and — since
+ * this does not swallow errors — shows the real failure reason directly in
+ * the UI instead of requiring a server log lookup.
+ */
+export const generateReceiptForInvoiceAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const receipt = await receiptService.generateReceiptForInvoiceAdmin(req.params.invoiceId);
+  sendSuccess(res, 200, 'Receipt ready', receipt);
+});
+
+export const downloadReceiptAdmin = asyncHandler(async (req: Request, res: Response) => {
+  const receipt = await receiptService.getReceiptForAdmin(req.params.id);
+  const buffer = await receiptService.renderReceiptPdf(receipt);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${receipt.receiptNumber}.pdf"`);
+  res.send(buffer);
+});
+
 /**
  * Serves a locally-stored receipt PDF, gated by a short-lived HMAC-signed
  * token (see storageService.getSignedDownloadUrl). Used only in the local
