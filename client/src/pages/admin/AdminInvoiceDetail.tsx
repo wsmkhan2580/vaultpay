@@ -1,23 +1,70 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { invoiceApi } from '../../services/resources';
-import type { Invoice } from '../../types';
+import { invoiceApi, receiptApi } from '../../services/resources';
+import type { Invoice, Receipt } from '../../types';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate } from '../../utils/format';
+import { extractErrorMessage } from '../../services/api';
 
 export default function AdminInvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+
+  const loadReceipts = useCallback(() => {
+    if (!id) return;
+    receiptApi
+      .listForInvoiceAdmin(id)
+      .then((res) => setReceipts(res.data.data))
+      .catch(() => setReceipts([]));
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
+    setLoading(true);
     invoiceApi
       .getAdmin(id)
       .then((res) => setInvoice(res.data.data))
       .finally(() => setLoading(false));
-  }, [id]);
+    loadReceipts();
+  }, [id, loadReceipts]);
+
+  async function handleGenerateReceipt() {
+    if (!id) return;
+    setReceiptError(null);
+    setGenerating(true);
+    try {
+      await receiptApi.generateForInvoiceAdmin(id);
+      loadReceipts();
+    } catch (err) {
+      // Surfaced directly from the server — this is the real reason (bad
+      // SMTP config, PDF generation error, etc.), not a generic message.
+      setReceiptError(extractErrorMessage(err, 'Could not generate the receipt.'));
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleDownloadReceipt(receiptId: string, receiptNumber: string) {
+    setReceiptError(null);
+    try {
+      const res = await receiptApi.downloadAdmin(receiptId);
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${receiptNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setReceiptError(extractErrorMessage(err, 'Could not download the receipt.'));
+    }
+  }
 
   if (loading) return <LoadingSpinner label="Loading invoice…" />;
   if (!invoice) return <p className="text-sm text-ink-700/60">Invoice not found.</p>;
@@ -65,7 +112,7 @@ export default function AdminInvoiceDetail() {
           </div>
         )}
 
-        <div>
+        <div className="mb-6">
           <h2 className="text-xs font-medium text-ink-700/50 mb-2">Line items</h2>
           <div className="border border-line rounded-md overflow-hidden">
             {invoice.items.map((item, idx) => (
@@ -81,6 +128,40 @@ export default function AdminInvoiceDetail() {
             ))}
           </div>
         </div>
+
+        {invoice.status === 'PAID' && (
+          <div>
+            <h2 className="text-xs font-medium text-ink-700/50 mb-2">Receipt</h2>
+
+            {receiptError && (
+              <div role="alert" className="mb-3 text-sm text-vault-rust bg-vault-rust/5 border border-vault-rust/20 rounded-md px-3 py-2.5">
+                {receiptError}
+              </div>
+            )}
+
+            {receipts.length > 0 ? (
+              <div className="space-y-2">
+                {receipts.map((r) => (
+                  <button
+                    key={r._id}
+                    onClick={() => handleDownloadReceipt(r._id, r.receiptNumber)}
+                    className="btn-secondary w-full sm:w-auto justify-between"
+                  >
+                    <span>{r.receiptNumber}</span>
+                    <span className="text-ink-700/40">Download →</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm text-ink-700/60 mb-2">No receipt exists for this invoice yet.</p>
+                <button onClick={handleGenerateReceipt} disabled={generating} className="btn-primary">
+                  {generating ? 'Generating…' : 'Generate receipt'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
