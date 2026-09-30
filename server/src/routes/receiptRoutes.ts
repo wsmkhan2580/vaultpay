@@ -17,6 +17,10 @@ router.use(authenticate);
 router.get('/invoice/:invoiceId', authorize('CLIENT'), receiptController.getMyReceiptsForInvoice);
 router.get('/me/:id/download-url', authorize('CLIENT'), receiptController.getMyReceiptDownloadUrl);
 router.get('/me/:id/download', authorize('CLIENT'), receiptController.downloadMyReceipt);
+
 router.get('/:id/download-url', authorize('ADMIN'), receiptController.getReceiptDownloadUrlAdmin);
+router.get('/:id/download', authorize('ADMIN'), receiptController.downloadReceiptAdmin);
+router.get('/admin/invoice/:invoiceId', authorize('ADMIN'), receiptController.listReceiptsForInvoiceAdmin);
+router.post('/admin/invoice/:invoiceId/generate', authorize('ADMIN'), receiptController.generateReceiptForInvoiceAdmin);
 
 export default router;
